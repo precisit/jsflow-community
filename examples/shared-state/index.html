@@ -1,0 +1,119 @@
+<!doctype html>
+<!--
+  jsflow example: shared state. A few shared fields that every peer in the room edits and sees.
+  Each field is a last-writer-wins register: a change carries a counter (a Lamport clock) and the author's id, and
+  the highest (counter, author) wins everywhere, whatever order changes arrive in. Changes are broadcast, which
+  may lose a message, so peers also compare a short digest every few seconds and fetch the full state reliably
+  from a peer whose digest differs. A peer that arrives late is sent the state reliably.
+    python3 -m http.server 8080      then open http://localhost:8080/shared-state/ in two tabs
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsflow shared state</title>
+<style>
+  body { font: 15px/1.45 system-ui, sans-serif; margin: 16px auto; max-width: 640px; padding: 0 12px; }
+  code { font-family: ui-monospace, monospace; }
+  label { display: block; margin: 12px 0 2px; font-weight: 600; } input, select, textarea { font: inherit; width: 100%; box-sizing: border-box; }
+  small { color: #555; }
+</style>
+</head>
+<body>
+<h1>jsflow shared state</h1>
+<p>Room <code id="room"></code>. Open <a id="share" href="">this link</a> in another tab and edit either one.</p>
+<p>State: <strong id="status">starting</strong>. In sync with <span id="synced">–</span>.</p>
+<label for="title">Title</label><input id="title">
+<label for="stage">Stage</label><select id="stage"><option>draft</option><option>review</option><option>published</option></select>
+<label for="note">Note</label><textarea id="note" rows="4"></textarea>
+<p><small id="who"></small></p>
+
+<script type="module">
+const SDK = 'https://cdn.jsflow.com/v1.0.0/jsflow.js';
+const APP = 'pk_y6tXYFPKOS2sz-z2c1BW-btB'; // the shared demo key (localhost only); use your own app's key
+const STATE = 0;
+const DIGEST_MS = 5000, FIELDS = ['title', 'stage', 'note'];
+
+// --- logic ---
+function hash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+
+// A set of last-writer-wins registers. `self` is this peer's id; it breaks ties between equal counters.
+function createStore(self) {
+  const entries = new Map();               // key -> { value, clock, by }
+  let clock = 0;
+  const wins = (a, b) => !b || a.clock > b.clock || (a.clock === b.clock && a.by > b.by);
+  return {
+    // A local edit: returns the change to broadcast.
+    set(key, value) { const e = { value, clock: ++clock, by: self }; entries.set(key, e); return { key, ...e }; },
+    // A change from elsewhere: keeps the highest (clock, by). Returns true if it changed anything here.
+    apply({ key, value, clock: c, by }) {
+      clock = Math.max(clock, c);          // never issue a counter lower than one we have seen
+      const e = { value, clock: c, by };
+      if (!wins(e, entries.get(key))) return false;
+      entries.set(key, e); return true;
+    },
+    snapshot: () => [...entries].map(([key, e]) => ({ key, ...e })),
+    // A summary of what this peer holds, the same on every peer that holds the same state, in any order.
+    digest() { let h = 0; for (const [k, e] of entries) h = (h + hash(`${k}|${e.clock}|${e.by}`)) >>> 0; return { n: entries.size, h }; },
+    get: (key) => entries.get(key)?.value,
+    author: (key) => entries.get(key)?.by,
+  };
+}
+const sameDigest = (a, b) => a.n === b.n && a.h === b.h;
+// --- end logic ---
+
+const { join } = await import(SDK);
+const $ = (id) => document.getElementById(id);
+if (!/^#[A-Za-z0-9_-]{1,64}$/.test(location.hash)) {
+  const r = crypto.getRandomValues(new Uint8Array(12));
+  location.hash = btoa(String.fromCharCode(...r)).replace(/\+/g, '-').replace(/\//g, '_');
+}
+$('room').textContent = location.hash.slice(1); $('share').href = location.href;
+
+const room = await join({ app: APP, room: location.hash.slice(1) });
+const store = createStore(room.id);
+const send = (to, m) => room.sendReliable(to, JSON.stringify(m), { channel: STATE });
+const cast = (m) => room.broadcast(JSON.stringify(m), { channel: STATE });
+const sync = new Map();                    // peer id -> did its last digest match ours?
+
+// Listeners right after join().
+room.on('state', (s) => { $('status').textContent = s; });
+$('status').textContent = room.state;
+room.on('peer', (id, up) => {
+  if (up) send(id, { t: 'snapshot', entries: store.snapshot() });   // bring a late joiner up to date reliably
+  else sync.delete(id);
+  status();
+});
+room.on('message', (from, data) => {
+  let m; try { m = JSON.parse(new TextDecoder().decode(data)); } catch { return; }
+  if (m.t === 'set') { if (store.apply(m)) show(); }
+  else if (m.t === 'snapshot') { let changed = false; for (const e of m.entries) changed = store.apply(e) || changed; if (changed) show(); }
+  else if (m.t === 'digest') {
+    const same = sameDigest(m, store.digest()); sync.set(from, same); status();
+    if (!same) send(from, { t: 'want' });                            // fetch the full state from that peer
+  } else if (m.t === 'want') send(from, { t: 'snapshot', entries: store.snapshot() });
+});
+setInterval(() => cast({ t: 'digest', ...store.digest() }), DIGEST_MS);
+
+function status() {
+  const peers = room.peers();
+  $('synced').textContent = peers.length ? `${peers.filter((p) => sync.get(p)).length} of ${peers.length} peers` : 'nobody else yet';
+}
+function show() {
+  for (const f of FIELDS) {
+    const el = $(f), v = store.get(f);
+    if (v !== undefined && el.value !== v && document.activeElement !== el) el.value = v;   // do not overwrite what you are typing
+  }
+  const last = FIELDS.map((f) => store.author(f)).filter((a) => a !== undefined);
+  $('who').textContent = last.length ? `Last edits by: ${FIELDS.map((f) => `${f}: ${store.author(f) === room.id ? 'you' : 'peer ' + store.author(f)}`).join(', ')}` : '';
+}
+// Local edits: after a short pause while typing, set the field and broadcast the change.
+const timers = {};
+for (const f of FIELDS) $(f).addEventListener('input', () => {
+  clearTimeout(timers[f]);
+  timers[f] = setTimeout(() => { cast({ t: 'set', ...store.set(f, $(f).value) }); show(); }, 250);
+});
+status();
+</script>
+</body>
+</html>

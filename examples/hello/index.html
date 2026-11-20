@@ -1,0 +1,111 @@
+<!doctype html>
+<!--
+  jsflow example: hello. Join a room, see who is here, send a message, measure a round trip.
+  Serve this folder from http://localhost (not file://), e.g.
+    python3 -m http.server 8080      then open http://localhost:8080/hello/
+  and open the same URL (with the same #room) in a second tab or browser.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsflow hello</title>
+<style>
+  body { font: 15px/1.45 system-ui, sans-serif; margin: 16px auto; max-width: 640px; padding: 0 12px; }
+  code { font-family: ui-monospace, monospace; }
+  ul { padding-left: 1.2em; } li { margin: 4px 0; } button { margin-left: 8px; }
+  #log { height: 180px; overflow-y: auto; border: 1px solid #999; padding: 4px 8px; margin: 8px 0; }
+</style>
+</head>
+<body>
+<h1>jsflow hello</h1>
+<p>Room <code id="room"></code>. Open <a id="share" href="">this link</a> in another tab or browser to join it.</p>
+<p>State: <strong id="status">starting</strong>. My id: <span id="me">–</span>. <button id="leave">Leave</button></p>
+<h2>Peers</h2>
+<ul id="peers"></ul>
+<h2>Messages</h2>
+<div id="log" aria-live="polite"></div>
+<form id="form"><input id="msg" autocomplete="off" placeholder="say something" size="36"> <button id="send">Send to everyone</button></form>
+
+<script type="module">
+// Pin the SDK version: a published version never changes.
+const SDK = 'https://cdn.jsflow.com/v1.0.0/jsflow.js';
+// The demo app's publishable key: it works on http://localhost and http://127.0.0.1 only, and is shared by
+// everyone trying jsflow. Use your own app's key from the dashboard.
+const APP = 'pk_y6tXYFPKOS2sz-z2c1BW-btB';
+// Channels label traffic (0 to 13). These are this page's own choice.
+const CHAT = 0, PING = 1;
+
+const { join, text } = await import(SDK);
+const $ = (id) => document.getElementById(id);
+
+// The room name comes from the URL (#name), or a fresh random one. Anyone who knows a room's name can join it
+// (with a key from an allowed origin), so make names hard to guess.
+if (!/^#[A-Za-z0-9_-]{1,64}$/.test(location.hash)) {
+  const r = crypto.getRandomValues(new Uint8Array(12));
+  location.hash = btoa(String.fromCharCode(...r)).replace(/\+/g, '-').replace(/\//g, '_');
+}
+const name = location.hash.slice(1);
+$('room').textContent = name; $('share').href = location.href;
+
+function log(line) {
+  const p = document.createElement('div'); p.textContent = line;
+  $('log').append(p); $('log').scrollTop = 1e9;
+}
+
+// A full room ('room_full', 409) clears as slots free, within about 15 s: retry every few seconds. join() rejects with a JoinError: branch on e.code.
+async function joinWithRetry() {
+  for (const t0 = Date.now(); ; ) {
+    try { return await join({ app: APP, room: name }); }
+    catch (e) {
+      if (e.code !== 'room_full' || Date.now() - t0 > 30_000) throw e;
+      $('status').textContent = 'room full, retrying';
+      await new Promise((r) => setTimeout(r, 2500));
+    }
+  }
+}
+
+let room;
+try { room = await joinWithRetry(); }
+catch (e) { $('status').textContent = `could not join: ${e.message}`; throw e; }
+$('me').textContent = room.id;
+
+// Attach every listener right after join(), before awaiting anything else: no event is lost then.
+room.on('state', (s) => { $('status').textContent = s; if (s === 'left' || s === 'superseded' || s === 'evicted') $('send').disabled = true; });
+$('status').textContent = room.state;
+
+// 'peer' fires when a peer becomes reachable (up) or unreachable. Ids are per join: a reload is a new id.
+const sentAt = new Map();
+function renderPeers() {
+  $('peers').replaceChildren(...room.peers().sort((a, b) => a - b).map((id) => {
+    const li = document.createElement('li'); li.textContent = `peer ${id}`;
+    const b = document.createElement('button'); b.textContent = 'ping';
+    // A reliable message (in order, retransmitted) to one peer; the peer answers with another.
+    b.onclick = () => { sentAt.set(id, performance.now()); room.sendReliable(id, 'ping', { channel: PING }); };
+    li.append(b); return li;
+  }));
+}
+room.on('peer', (id, up) => { log(`peer ${id} ${up ? 'is here' : 'is unreachable'}`); renderPeers(); });
+renderPeers();
+
+// Every message: who sent it, the text, and how it was sent.
+room.on('message', (from, data, info) => {
+  const body = text(data);
+  if (info.channel === PING) {
+    if (body === 'ping') room.sendReliable(from, 'pong', { channel: PING });
+    else if (sentAt.has(from)) log(`round trip to peer ${from}: ${Math.round(performance.now() - sentAt.get(from))} ms`);
+    return;
+  }
+  log(`peer ${from}${info.broadcast ? '' : ' (to you)'}: ${body}`);
+});
+
+// broadcast: to everyone in the room. Best effort: it may be lost.
+$('form').onsubmit = (e) => {
+  e.preventDefault();
+  const v = $('msg').value.trim(); if (!v) return;
+  room.broadcast(v, { channel: CHAT }); log(`me: ${v}`); $('msg').value = '';
+};
+$('leave').onclick = () => room.leave();
+</script>
+</body>
+</html>

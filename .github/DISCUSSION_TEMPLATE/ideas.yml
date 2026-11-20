@@ -1,0 +1,17 @@
+title: "[Idea] "
+body:
+  - type: textarea
+    id: building
+    attributes:
+      label: What are you building?
+      description: We decide what to build from what people are trying to do, so start there.
+    validations: { required: true }
+  - type: textarea
+    id: need
+    attributes:
+      label: What is hard or missing today?
+    validations: { required: true }
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like to see?

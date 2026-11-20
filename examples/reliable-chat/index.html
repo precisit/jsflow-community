@@ -1,0 +1,154 @@
+<!doctype html>
+<!--
+  jsflow example: reliable chat. Messages that must arrive, in order, with history for late joiners.
+  A message is sent with sendReliable to each peer (in order per peer, retransmitted until acknowledged). The
+  promise says whether it was queued; the 'undelivered' event says when a peer stayed unreachable too long.
+  A peer that arrives late asks ONE peer for the recent history (the others stay silent: copies from several peers would interleave).
+  Every message has an id, so a repeat is ignored, and a clock, so every peer shows the same order.
+    python3 -m http.server 8080      then open http://localhost:8080/reliable-chat/ in two tabs
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsflow reliable chat</title>
+<style>
+  body { font: 15px/1.45 system-ui, sans-serif; margin: 16px auto; max-width: 640px; padding: 0 12px; }
+  code { font-family: ui-monospace, monospace; }
+  #notes { color: #555; font-size: 12px; min-height: 1.4em; }
+  #log { height: 260px; overflow-y: auto; border: 1px solid #999; padding: 4px 8px; margin: 8px 0; }
+  .mine { text-align: right; } .meta { color: #555; font-size: 12px; } .warn { color: #a00; }
+</style>
+</head>
+<body>
+<h1>jsflow reliable chat</h1>
+<p>Room <code id="room"></code>. Open <a id="share" href="">this link</a> in another tab.</p>
+<p>Your name <input id="name" size="14" maxlength="24"> State: <strong id="status">starting</strong></p>
+<div id="notes" aria-live="polite"></div>
+<div id="log" aria-live="polite"></div>
+<form id="form"><input id="msg" autocomplete="off" placeholder="write a message" size="40"> <button>Send</button></form>
+
+<script type="module">
+const SDK = 'https://cdn.jsflow.com/v1.0.0/jsflow.js';
+const APP = 'pk_y6tXYFPKOS2sz-z2c1BW-btB'; // the shared demo key (localhost only); use your own app's key
+const CHAT = 0, HISTORY = 1, HISTORY_REQUEST = 2;
+const KEEP = 50;                                  // how many recent messages a late joiner is sent
+
+// --- logic ---
+// The conversation: messages by id, in ONE order everywhere (by clock, ties by author id), with a cap. Adding a message twice does nothing.
+// `clock` is a Lamport clock: every new message gets one higher than any clock this peer has seen.
+function createLog(keep = KEEP) {
+  const byId = new Map();
+  let clock = 0;
+  const ordered = () => [...byId.values()].sort((a, b) => a.clock - b.clock || a.from - b.from);
+  return {
+    add(m) {
+      if (byId.has(m.id)) return false;
+      byId.set(m.id, m); clock = Math.max(clock, m.clock);
+      while (byId.size > keep) byId.delete(ordered()[0].id);
+      return true;
+    },
+    tick: () => ++clock,
+    recent: ordered,
+    has: (id) => byId.has(id),
+  };
+}
+// When is a joiner done asking for the history? NOT at join(): join() resolves before any link is up, so room.peers() is empty at first even in a
+// busy room, and "I am alone" decided then is wrong. It is done when a ready history arrives, when every reachable peer has said it is new too
+// (nothing older exists), or when nobody is reachable a few seconds after joining (checked by a timer: aloneCheck).
+function createJoiner() {
+  let ready = false; const isNew = new Set();
+  return {
+    get ready() { return ready; },
+    aloneCheck(reachable) { if (reachable.length === 0) ready = true; },
+    /** An answer from a peer: 'done', or 'next' (ask the next peer). */
+    answer(from, peerReady, reachable) {
+      if (peerReady) { ready = true; return 'done'; }
+      isNew.add(from);
+      if (reachable.length > 0 && reachable.every((p) => isNew.has(p))) { ready = true; return 'done'; }
+      return 'next';
+    },
+  };
+}
+// The one peer a joiner asks for the history: the lowest id it can reach that it has not asked yet.
+const nextSource = (peers, asked) => peers.filter((p) => !asked.has(p)).sort((a, b) => a - b)[0];
+let counter = 0;
+// Ids are random (peer ids are random and reused, so an id built from one could collide and a repeat would be dropped).
+const messageId = (self) => `${self}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}-${counter++}`;
+// --- end logic ---
+
+const { join } = await import(SDK);
+const $ = (id) => document.getElementById(id);
+if (!/^#[A-Za-z0-9_-]{1,64}$/.test(location.hash)) {
+  const r = crypto.getRandomValues(new Uint8Array(12));
+  location.hash = btoa(String.fromCharCode(...r)).replace(/\+/g, '-').replace(/\//g, '_');
+}
+$('room').textContent = location.hash.slice(1); $('share').href = location.href;
+
+const room = await join({ app: APP, room: location.hash.slice(1) });
+let myName = 'Guest ' + room.id; $('name').value = myName;
+const chat = createLog();
+const enc = (o) => JSON.stringify(o);
+
+// The whole conversation is drawn again on every change, because a late entry can belong in the middle.
+function render() {
+  $('log').replaceChildren(...chat.recent().map((m) => {
+    const d = document.createElement('div'); if (m.from === room.id) d.className = 'mine';
+    const meta = document.createElement('div'); meta.className = 'meta'; meta.textContent = m.name;
+    d.append(meta, m.text); return d;
+  }));
+  $('log').scrollTop = 1e9;
+}
+function note(text, cls = 'meta') { const d = document.createElement('div'); d.className = cls; d.textContent = text; $('notes').replaceChildren(d); }
+
+// Listeners right after join().
+room.on('state', (s) => { $('status').textContent = s; });
+$('status').textContent = room.state;
+room.on('message', (from, data, info) => {
+  let m; try { m = JSON.parse(new TextDecoder().decode(data)); } catch { return; }
+  if (info.channel === CHAT && chat.add(m)) render();
+  // Only the peer that was asked answers, and only with a history it has: a peer that is itself new says so (ready: false).
+  if (info.channel === HISTORY_REQUEST) room.sendReliable(from, enc({ ready: joiner.ready, items: chat.recent() }), { channel: HISTORY });
+  if (info.channel === HISTORY) {
+    // Merging is safe: the order comes from (clock, author), repeats are dropped by id.
+    let changed = false; for (const h of m.items) changed = chat.add(h) || changed; if (changed) render();
+    clearTimeout(askTimer);
+    if (joiner.answer(from, m.ready, room.peers()) === 'next') askForHistory();           // that peer is new too: the next one; when all are new, nothing older exists
+  }
+});
+// A late joiner asks ONE peer for the history (the lowest id), and the next one if that peer stays silent for 3 s. The ids stop an entry that
+// arrives twice being shown twice, and the clock puts every entry in the same place on every screen.
+const asked = new Set(), joiner = createJoiner(); let asking = false, askTimer = 0;
+// join() resolves before any link is up, so peers() is empty at first: still nobody after 3 s means nothing to ask.
+setTimeout(() => joiner.aloneCheck(room.peers()), 3000);
+function askForHistory() {
+  clearTimeout(askTimer);
+  if (joiner.ready) return;
+  const source = nextSource(room.peers(), asked);
+  if (source === undefined) { asking = false; return; }
+  asking = true; asked.add(source);
+  room.sendReliable(source, enc({}), { channel: HISTORY_REQUEST });
+  askTimer = setTimeout(askForHistory, 3000);
+}
+room.on('peer', (id, up) => {
+  note(`peer ${id} ${up ? 'joined' : 'left'}`);
+  if (up && !asking) askForHistory();
+});
+// A peer was unreachable for 30 s, or restarted: up to n reliable messages to it may not have arrived.
+room.on('undelivered', (peer, n) => note(`${n} message(s) to peer ${peer} may not have arrived`, 'warn'));
+
+$('name').oninput = (e) => { myName = e.target.value.slice(0, 24) || myName; };
+$('form').onsubmit = async (e) => {
+  e.preventDefault();
+  const text = $('msg').value.trim(); if (!text) return;
+  const m = { id: messageId(room.id), from: room.id, clock: chat.tick(), name: myName, text, at: Date.now() };
+  chat.add(m); render(); $('msg').value = '';
+  // One reliable send per peer. `true`: queued; `false`: that peer's queue is full (it is far behind).
+  const peers = room.peers();
+  const queued = await Promise.all(peers.map((p) => room.sendReliable(p, enc(m), { channel: CHAT })));
+  const failed = peers.filter((_, i) => !queued[i]);
+  if (failed.length) note(`could not queue for peer ${failed.join(', ')}`, 'warn');
+};
+</script>
+</body>
+</html>

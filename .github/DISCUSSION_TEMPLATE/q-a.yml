@@ -1,0 +1,22 @@
+title: "[Question] "
+body:
+  - type: markdown
+    attributes:
+      value: "Ask how to do something with jsflow. Never paste a secret key (`sk_…`) or a signed ticket."
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to do?
+    validations: { required: true }
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried, and what happened?
+      description: Code, the exact error, the SDK version and the browser help a lot.
+  - type: checkboxes
+    id: secrets
+    attributes:
+      label: Before you post
+      options:
+        - label: I have not included a secret key, a signed ticket or personal data.
+          required: true

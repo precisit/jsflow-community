@@ -1,0 +1,102 @@
+<!doctype html>
+<!--
+  jsflow example: presence. Who is here, and where in the page each of them is.
+  Each peer broadcasts its name and its current section whenever either changes, and every few seconds as a
+  heartbeat. A peer that arrives late is sent the current picture reliably. Broadcasts may be lost, so the
+  heartbeat repairs gaps, and a peer that stops sending is shown as idle.
+    python3 -m http.server 8080      then open http://localhost:8080/presence/ in two tabs
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsflow presence</title>
+<style>
+  body { font: 15px/1.45 system-ui, sans-serif; margin: 16px auto; max-width: 640px; padding: 0 12px; }
+  code { font-family: ui-monospace, monospace; }
+  nav button { margin-right: 6px; } nav button[aria-pressed="true"] { font-weight: 700; }
+  ul { list-style: none; padding: 0; } li { margin: 6px 0; display: flex; gap: 8px; align-items: center; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+  .idle { opacity: 0.5; }
+</style>
+</head>
+<body>
+<h1>jsflow presence</h1>
+<p>Room <code id="room"></code>. Open <a id="share" href="">this link</a> in another tab to see yourself from outside.</p>
+<p>Your name <input id="name" size="14" maxlength="24"> State: <strong id="status">starting</strong></p>
+<h2>Where are you looking?</h2>
+<nav id="sections" aria-label="Sections"></nav>
+<h2>In this room</h2>
+<ul id="who" aria-live="polite"></ul>
+
+<script type="module">
+const SDK = 'https://cdn.jsflow.com/v1.0.0/jsflow.js';
+const APP = 'pk_y6tXYFPKOS2sz-z2c1BW-btB'; // the shared demo key (localhost only); use your own app's key
+const PRESENCE = 0;
+const SECTIONS = ['Overview', 'Activity', 'Settings'];
+const HEARTBEAT_MS = 4000, IDLE_AFTER_MS = 12_000;
+
+// --- logic ---
+// The picture of the room: peer id -> { name, section, seen }. `seen` is when we last heard from that peer.
+function createPicture(now = () => Date.now()) {
+  const peers = new Map();
+  return {
+    update(id, { name, section }) { peers.set(id, { name, section, seen: now() }); },
+    remove(id) { peers.delete(id); },
+    // Sorted by id so every browser lists the same order; a peer we have not heard from lately is idle.
+    list: () => [...peers].sort((a, b) => a[0] - b[0]).map(([id, p]) => ({ id, ...p, idle: now() - p.seen > IDLE_AFTER_MS })),
+  };
+}
+// One colour per peer, the same on every screen: derived from the id alone.
+const colourOf = (id) => `hsl(${(id * 137.508) % 360} 65% 50%)`;
+// --- end logic ---
+
+const { join } = await import(SDK);
+const $ = (id) => document.getElementById(id);
+if (!/^#[A-Za-z0-9_-]{1,64}$/.test(location.hash)) {
+  const r = crypto.getRandomValues(new Uint8Array(12));
+  location.hash = btoa(String.fromCharCode(...r)).replace(/\+/g, '-').replace(/\//g, '_');
+}
+$('room').textContent = location.hash.slice(1); $('share').href = location.href;
+
+const room = await join({ app: APP, room: location.hash.slice(1) });
+const me = { name: 'Guest ' + room.id, section: SECTIONS[0] };
+$('name').value = me.name;
+const picture = createPicture();
+const encode = () => JSON.stringify({ t: 'presence', name: me.name, section: me.section });
+
+// Listeners right after join().
+room.on('state', (s) => { $('status').textContent = s; });
+$('status').textContent = room.state;
+room.on('message', (from, data) => {
+  try { const m = JSON.parse(new TextDecoder().decode(data)); if (m.t === 'presence') { picture.update(from, m); render(); } } catch { /* ignore */ }
+});
+// A peer that becomes reachable gets the current picture of me reliably (a broadcast sent just now might be lost).
+room.on('peer', (id, up) => {
+  if (up) room.sendReliable(id, encode(), { channel: PRESENCE }); else picture.remove(id);
+  render();
+});
+
+const announce = () => room.broadcast(encode(), { channel: PRESENCE });
+setInterval(() => { announce(); render(); }, HEARTBEAT_MS);   // the heartbeat repairs lost broadcasts, and refreshes "idle"
+
+function render() {
+  const rows = [{ id: room.id, ...me, idle: false, self: true }, ...picture.list()];
+  $('who').replaceChildren(...rows.map((p) => {
+    const li = document.createElement('li'); if (p.idle) li.className = 'idle';
+    const dot = document.createElement('span'); dot.className = 'dot'; dot.style.background = colourOf(p.id);
+    li.append(dot, `${p.name}${p.self ? ' (you)' : ''}: ${p.section}${p.idle ? ' (idle)' : ''}`);
+    return li;
+  }));
+  $('sections').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.textContent === me.section)));
+}
+for (const s of SECTIONS) {
+  const b = document.createElement('button'); b.textContent = s;
+  b.onclick = () => { me.section = s; announce(); render(); };
+  $('sections').append(b);
+}
+$('name').oninput = (e) => { me.name = e.target.value.slice(0, 24) || me.name; announce(); render(); };
+render(); announce();
+</script>
+</body>
+</html>

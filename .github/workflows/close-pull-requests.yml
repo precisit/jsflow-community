@@ -1,0 +1,19 @@
+# This repository is generated from our main repository, so pull requests cannot be merged here (see CONTRIBUTING.md).
+# pull_request_target runs from the default branch and checks out nothing, so a pull request's code never runs.
+name: Close pull requests
+on:
+  pull_request_target:
+    types: [opened, reopened]
+permissions:
+  pull-requests: write
+jobs:
+  close:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain and close
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh pr close "$PR" --repo "$REPO" --comment "Thank you. This repository is generated from our main repository with every release, so we cannot merge pull requests here. Please describe the change in an issue or a discussion and we will make it at the source. See CONTRIBUTING.md."

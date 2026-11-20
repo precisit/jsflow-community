@@ -1,0 +1,15 @@
+{
+  "name": "jsflow",
+  "owner": { "name": "Precisit AB", "email": "support@jsflow.com" },
+  "metadata": { "description": "jsflow: rooms of browsers that exchange messages directly. Agent skills for building with jsflow and managing a jsflow account." },
+  "plugins": [
+    {
+      "name": "jsflow",
+      "source": "./plugins/jsflow",
+      "description": "Build with jsflow and manage a jsflow account from a coding agent: apps, keys, usage, logs and live rooms through the jsflow CLI, with a person approving anything that spends money, deletes or creates access.",
+      "license": "MIT",
+      "homepage": "https://jsflow.com/docs/agents/",
+      "keywords": ["jsflow", "webrtc", "realtime", "multiplayer", "agents"]
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a question or suggest a feature
+    url: https://github.com/precisit/jsflow-community/discussions
+    about: Questions, ideas and show-and-tell go to Discussions, where others can answer and find them.
+  - name: Is jsflow down?
+    url: https://status.jsflow.com
+    about: Check the status page before reporting a problem with joining.
+  - name: Pro and Scale support, billing, privacy
+    url: mailto:support@jsflow.com
+    about: Anything that needs your account details goes to support by email, not here.
+  - name: Report a security problem
+    url: https://jsflow.com/docs/security/reporting/
+    about: Please do not open a public issue for a vulnerability.
