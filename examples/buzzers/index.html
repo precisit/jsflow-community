@@ -1,0 +1,171 @@
+<!doctype html>
+<!--
+  jsflow example: buzzers. A big screen hosts a quiz; phones join by QR code and press a buzzer; the screen says who was first and keeps the score.
+  One peer decides, so there is one truth: a phone sends its press to the screen (sealed end to end: peers it passes through cannot read it), the first press to reach the screen wins, and
+  the screen tells everyone the result. A phone that joins late, or reloads, is sent the scoreboard the moment it arrives.
+    cd examples && python3 -m http.server 8080      then open http://<this computer's address>:8080/buzzers/ on the big screen
+  Your app's origins must include that address: see the note in the page, and the README.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsflow buzzers</title>
+<style>
+  /* jsflow's dark tokens (brand/tokens), Onest, and one colour per player from the brand's peer palette. The lamp (red-orange) marks only what is live. */
+  @font-face { font-family: Onest; font-weight: 100 900; font-display: swap; src: url(onest.woff2) format('woff2'); }
+  :root { color-scheme: dark; --bg: #0b0e11; --surface: #12171c; --raised: #192027; --text: #e3e8ec; --muted: #8c98a2; --border: #242c34; --strong: #626e7a; --lamp: #fa5b3f;
+    --p0: #76c3fc; --p1: #eea824; --p2: #1aab85; --p3: #b37ac5; --p4: #63eef9; --p5: #fc8ec2; --p6: #c9e39e; --p7: #7c94fe; }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }                              /* the roles below set display: grid, which would otherwise beat the hidden attribute */
+  body { margin: 0; background: var(--bg); color: var(--text); font: 400 1rem/1.45 Onest, system-ui, -apple-system, 'Segoe UI', sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 24px 20px; }
+  header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 24px; color: var(--muted); }
+  .wm { font-size: 1.25rem; letter-spacing: -0.02em; color: var(--text); } .wm span { font-weight: 300; color: var(--muted); } .wm b { font-weight: 600; }
+  h2 { margin: 0 0 12px; font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em; }
+  code { font: 0.8rem ui-monospace, 'SF Mono', Menlo, monospace; color: var(--muted); word-break: break-all; }
+  button { font: inherit; font-weight: 600; color: var(--bg); background: var(--text); border: 0; border-radius: 6px; height: 44px; padding: 0 20px; }
+  button:disabled { background: var(--raised); color: var(--muted); }
+  #note { background: var(--surface); border: 1px solid var(--border); border-left: 6px solid var(--p1); border-radius: 6px; padding: 12px 16px; }
+  #host { display: grid; grid-template-columns: 300px 1fr; gap: 32px; align-items: start; }
+  @media (max-width: 760px) { #host { grid-template-columns: 1fr; } }
+  .join { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 20px; text-align: center; }
+  .join p { margin: 12px 0 0; color: var(--muted); } #qr { margin: 0; } #qr svg { width: 100%; max-width: 260px; height: auto; border-radius: 4px; background: #fff; color: #0b0e11; }   /* dark modules on a light tile, so phones can scan it */
+  #headline[data-open]::before { content: ''; display: inline-block; width: 0.5em; height: 0.5em; margin-right: 0.5em; border-radius: 50%; background: var(--lamp); vertical-align: 0.1em; }
+  #who { list-style: none; margin: 0 0 20px; padding: 0; display: grid; gap: 8px; }
+  #who li { --c: var(--p0); display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; font-size: 1.5rem;
+    background: var(--surface); border: 1px solid var(--border); border-left: 6px solid var(--c); border-radius: 6px; }
+  #who li span:first-child { color: var(--c); font-weight: 600; display: flex; align-items: center; gap: 10px; }
+  #who li:not(.away) span:first-child::after { content: ''; width: 0.4em; height: 0.4em; border-radius: 50%; background: var(--lamp); }   /* here now: live */
+  #who li span:last-child { font-weight: 600; font-variant-numeric: tabular-nums; }
+  #who li.away { opacity: 0.5; }
+  #who li.first { background: color-mix(in srgb, var(--c) 20%, var(--surface)); border-color: var(--c); }
+  #phone { --c: var(--p0); display: grid; gap: 16px; }
+  #phone label { display: grid; gap: 6px; color: var(--muted); font-size: 0.875rem; }
+  #name { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--strong); border-left: 6px solid var(--c); border-radius: 6px; height: 44px; padding: 0 12px; }
+  #result { margin: 0; min-height: 5rem; padding: 16px; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 1.75rem;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }
+  #result.won { color: var(--c); background: color-mix(in srgb, var(--c) 18%, var(--surface)); border-color: var(--c); } #result.lost { color: var(--w); }
+  #buzz { width: 100%; height: 36vh; min-height: 200px; font-size: 3rem; letter-spacing: 0.02em; border-radius: 12px; }
+</style>
+</head>
+<body>
+<main>
+<header><span class="wm"><span>js</span><b>flow</b></span> buzzers</header>
+<p id="note" hidden>Put your own app's publishable key in <code>APP</code> (dashboard, Keys). The shared demo key works on localhost only, and a phone cannot reach your computer's localhost: add this page's address to the app's origins: your computer's address on the same Wi-Fi, with the port (written as <code>http://</code>, the address and <code>:8080</code>), or your deployed URL.</p>
+<div id="host" hidden>
+  <div class="join"><p id="qr"></p><p>Scan to join, or open</p><code id="link"></code></div>
+  <div><h2 id="headline"></h2><ul id="who" aria-live="polite"></ul><button id="next">Next round</button></div>
+</div>
+<div id="phone" hidden>
+  <label>Your name <input id="name" size="14" maxlength="24"></label>
+  <h2 id="result" aria-live="polite"></h2><button id="buzz" disabled>BUZZ</button>
+</div>
+</main>
+
+<script type="module">
+const SDK = 'https://cdn.jsflow.com/v1.1.0/jsflow.js';
+const APP = 'pk_YOUR_APP_KEY'; // put your own app's publishable key here (the shared demo key works on localhost only)
+
+// --- logic ---
+// The host's game: who is in, whose phone is which peer, the round, and the score. Players are kept by a token the phone remembers, so a phone that
+// reloads (a new peer id) gets its name and score back; the score stays when a phone leaves.
+function createGame(saved = {}) {
+  const players = saved.players ?? {}, peers = new Map();            // token -> { name, score, c }; peer id -> token. `c` is the player's colour, 0 to 7, the same on every screen
+  let round = saved.round ?? 1, open = saved.open ?? true, winner = saved.winner ?? null;
+  return {
+    hello(id, token, name) { peers.set(id, token); players[token] = { score: 0, c: Object.keys(players).length % 8, ...players[token], name }; },
+    leave(id) { peers.delete(id); },
+    // The first press of the open round that reaches the host wins it; a press for an old round, or after the winner, changes nothing.
+    buzz(id, r) {
+      const token = peers.get(id);
+      if (token === undefined || r !== round || !open) return false;
+      open = false; winner = token; players[token].score++; return true;
+    },
+    next() { round++; open = true; winner = null; },
+    view() {
+      const here = new Set(peers.values());
+      const list = Object.entries(players).map(([token, p]) => ({ token, ...p, here: here.has(token) }));
+      return { round, open, winner, players: list.sort((a, b) => b.score - a.score || (a.token < b.token ? -1 : 1)) };
+    },
+    save: () => ({ round, open, winner, players }),
+  };
+}
+// What a phone shows for the host's latest view.
+function resultFor(view, token) {
+  if (view.open) return 'Buzz!';
+  const w = view.players.find((p) => p.token === view.winner);
+  return view.winner === token ? 'You were first!' : `${w ? w.name : 'Someone'} was first`;
+}
+// --- end logic ---
+
+const { join } = await import(SDK);
+const $ = (id) => document.getElementById(id);
+if (APP.startsWith('pk_YOUR')) { $('note').hidden = false; throw new Error('put your own key in APP'); }
+const play = location.search === '?play';
+if (!/^#[A-Za-z0-9_-]{1,64}$/.test(location.hash)) {
+  const r = crypto.getRandomValues(new Uint8Array(12));
+  location.hash = btoa(String.fromCharCode(...r)).replace(/\+/g, '-').replace(/\//g, '_');
+}
+const roomName = location.hash.slice(1);
+const room = await join({ app: APP, room: roomName });
+// Messages are text, `kind` or `kind:payload`: from the screen `host` and `score:<scoreboard>`, from a phone `hi:<token and name>` and `buzz:<round>`.
+const read = (data) => { const t = new TextDecoder().decode(data), i = t.indexOf(':'); return i < 0 ? [t, ''] : [t.slice(0, i), t.slice(i + 1)]; };
+const json = (s) => { try { return JSON.parse(s) ?? {}; } catch { return {}; } };
+
+if (!play) {
+  // ---- the big screen ----
+  const KEY = 'buzzers-host:' + roomName;
+  const game = createGame(JSON.parse(sessionStorage.getItem(KEY) ?? '{}'));   // a reload of the screen keeps the score
+  const link = `${location.origin}${location.pathname}?play#${roomName}`;
+  $('host').hidden = false; $('link').textContent = link;
+  import('./qr.js').then(({ encode, toSvg }) => { $('qr').innerHTML = toSvg(encode(link), 'QR code to join the buzzers'); }, () => {});
+  const tell = (id) => room.sendReliable(id, 'score:' + JSON.stringify(game.view()));
+  const changed = () => { sessionStorage.setItem(KEY, JSON.stringify(game.save())); room.peers().forEach(tell); render(); };
+  room.on('peer', (id, up) => {
+    if (!up) { game.leave(id); changed(); return; }
+    room.sendReliable(id, 'host'); tell(id);                       // a phone that arrives learns who the screen is and gets the scoreboard at once
+  });
+  room.on('message', (from, data) => {
+    const [kind, rest] = read(data);
+    if (kind === 'hi') { const m = json(rest); if (typeof m.token === 'string') { game.hello(from, m.token.slice(0, 16), String(m.name ?? 'Player').slice(0, 24)); changed(); } }
+    if (kind === 'buzz' && game.buzz(from, Number(rest))) changed();           // the first press to reach the screen wins
+  });
+  $('next').onclick = () => { game.next(); changed(); };
+  function render() {
+    const v = game.view(), w = v.players.find((p) => p.token === v.winner);
+    $('headline').textContent = v.open ? `Round ${v.round}: buzzers open` : `Round ${v.round}: ${w?.name ?? 'someone'} was first!`;
+    $('headline').toggleAttribute('data-open', v.open);
+    $('who').replaceChildren(...v.players.map((p) => {
+      const li = document.createElement('li'); li.className = (p.token === v.winner ? 'first ' : '') + (p.here ? '' : 'away'); li.style.setProperty('--c', `var(--p${p.c})`);
+      const a = document.createElement('span'), b = document.createElement('span'); a.textContent = p.name; b.textContent = p.score; li.append(a, b); return li;
+    }));
+  }
+  render();
+} else {
+  // ---- a phone ----
+  const token = sessionStorage.getItem('buzzers-token') ?? crypto.randomUUID().slice(0, 8);
+  sessionStorage.setItem('buzzers-token', token);
+  $('phone').hidden = false;
+  $('name').value = sessionStorage.getItem('buzzers-name') ?? 'Player ' + room.id;
+  let host, view;
+  function show() {                                                            // the phone's words and colours for the host's latest view
+    const me = view.players.find((p) => p.token === token), w = view.players.find((p) => p.token === view.winner), r = $('result');
+    if (me) $('phone').style.setProperty('--c', `var(--p${me.c})`);
+    if (w) r.style.setProperty('--w', `var(--p${w.c})`);
+    r.textContent = resultFor(view, token); r.className = view.open ? '' : view.winner === token ? 'won' : 'lost';
+  }
+  const hello = () => host !== undefined && room.sendReliable(host, 'hi:' + JSON.stringify({ token, name: $('name').value }));
+  room.on('message', (from, data) => {
+    const [kind, rest] = read(data);
+    if (kind === 'host') { host = from; hello(); }                              // the screen says who it is
+    if (kind === 'score' && from === host) { view = json(rest); $('buzz').disabled = !view.open; show(); }
+  });
+  room.on('peer', (id, up) => { if (!up && id === host) { host = undefined; $('buzz').disabled = true; $('result').textContent = 'Waiting for the screen'; $('result').className = ''; } });
+  $('buzz').onclick = () => { if (view?.open) room.sendReliable(host, 'buzz:' + view.round); };   // sealed end to end: peers it passes through cannot read it; reliable, so a lost packet is resent
+  $('name').onchange = () => { sessionStorage.setItem('buzzers-name', $('name').value); hello(); };
+  $('result').textContent = 'Waiting for the screen';
+}
+</script>
+</body>
+</html>
