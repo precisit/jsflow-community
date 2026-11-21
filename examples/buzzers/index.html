@@ -71,10 +71,10 @@ const APP = 'pk_YOUR_APP_KEY'; // put your own app's publishable key here (the s
 // The host's game: who is in, whose phone is which peer, the round, and the score. Players are kept by a token the phone remembers, so a phone that
 // reloads (a new peer id) gets its name and score back; the score stays when a phone leaves.
 function createGame(saved = {}) {
-  const players = saved.players ?? {}, peers = new Map();            // token -> { name, score, c }; peer id -> token. `c` is the player's colour, 0 to 7, the same on every screen
+  const players = saved.players ?? {}, peers = new Map();            // token -> { name, score, n, c }; peer id -> token. `n` is the order they joined in, `c` their colour (0 to 7), the same on every screen
   let round = saved.round ?? 1, open = saved.open ?? true, winner = saved.winner ?? null;
   return {
-    hello(id, token, name) { peers.set(id, token); players[token] = { score: 0, c: Object.keys(players).length % 8, ...players[token], name }; },
+    hello(id, token, name) { peers.set(id, token); const n = Object.keys(players).length; players[token] = { score: 0, n, c: n % 8, ...players[token], name }; },
     leave(id) { peers.delete(id); },
     // The first press of the open round that reaches the host wins it; a press for an old round, or after the winner, changes nothing.
     buzz(id, r) {
@@ -86,7 +86,7 @@ function createGame(saved = {}) {
     view() {
       const here = new Set(peers.values());
       const list = Object.entries(players).map(([token, p]) => ({ token, ...p, here: here.has(token) }));
-      return { round, open, winner, players: list.sort((a, b) => b.score - a.score || (a.token < b.token ? -1 : 1)) };
+      return { round, open, winner, players: list.sort((a, b) => b.score - a.score || a.n - b.n) };
     },
     save: () => ({ round, open, winner, players }),
   };
