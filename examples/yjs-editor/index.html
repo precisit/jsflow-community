@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsflow shared editor</title>
+<style>
+  body { font: 15px/1.45 system-ui, sans-serif; margin: 16px auto; max-width: 760px; padding: 0 12px; }
+  code { font-family: ui-monospace, monospace; }
+  #note { background: #fff4d6; border: 1px solid #d9b44a; padding: 6px 10px; border-radius: 4px; }
+  #who { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0; }
+  #who li::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: var(--c); }
+  #editor { border: 1px solid #999; border-radius: 4px; }
+  #editor .cm-editor { height: 50vh; }
+  #editor .cm-scroller { overflow: auto; }
+</style>
+</head>
+<body>
+<h1>jsflow shared editor</h1>
+<p id="note" hidden>Put your app's publishable key in <code>APP</code> in <code>main.js</code>, and add this page's address to the app's origins. See the README.</p>
+<p>Room <code id="room"></code>. Open <a id="share" href="">this link</a> in a second tab to edit the same document.</p>
+<p>State: <strong id="status">starting</strong>. <span id="sync"></span></p>
+<ul id="who" aria-label="Who is here"></ul>
+<div id="editor"></div>
+<script type="module" src="/main.js"></script>
+</body>
+</html>
