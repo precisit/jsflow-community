@@ -12,9 +12,9 @@
     "@codemirror/state": "6.7.6",
     "@codemirror/view": "6.43.15",
     "codemirror": "6.0.2",
-    "jsflow-sdk": "1.1.1",
+    "jsflow-sdk": "1.1.2",
     "y-codemirror.next": "0.3.6",
-    "y-jsflow": "0.1.0",
+    "y-jsflow": "0.1.1",
     "y-protocols": "1.0.7",
     "yjs": "13.6.33"
   },

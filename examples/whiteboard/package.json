@@ -1,0 +1,23 @@
+{
+  "name": "jsflow-example-whiteboard",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "A shared whiteboard for phones and desktops: Yjs over a jsflow room, through y-jsflow, kept in each browser with y-indexeddb",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "jsflow-sdk": "1.1.2",
+    "perfect-freehand": "1.2.3",
+    "y-indexeddb": "9.0.12",
+    "y-jsflow": "0.1.1",
+    "y-protocols": "1.0.7",
+    "yjs": "13.6.33"
+  },
+  "devDependencies": {
+    "vite": "8.3.8"
+  }
+}
