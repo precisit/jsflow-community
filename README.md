@@ -37,7 +37,7 @@ No jsflow account yet? `npx jsflow-cli signup` opens a page where a person creat
 
 The files in this repository (the examples, the templates, the text) are under the [MIT licence](LICENSE). The jsflow SDK and
 the service are **not** MIT: the SDK is source-visible and free to use with the service, under its own licence, and the service
-is covered by the terms at https://jsflow.com. Using an example does not change that.
+is covered by the terms at https://jsflow.com. Using an example does not change that. jsflow and the jsflow logo are trademarks of Precisit AB and are not covered by the MIT licence.
 
 ## Please
 

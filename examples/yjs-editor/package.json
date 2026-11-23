@@ -14,7 +14,7 @@
     "codemirror": "6.0.2",
     "jsflow-sdk": "1.1.2",
     "y-codemirror.next": "0.3.6",
-    "y-jsflow": "0.1.1",
+    "y-jsflow": "0.1.2",
     "y-protocols": "1.0.7",
     "yjs": "13.6.33"
   },

@@ -118,7 +118,7 @@
 </head>
 <body>
 
-<section id="start" hidden>
+<section id="start" hidden data-jf-chrome="lobby">
   <div class="wrap">
     <h1>Whiteboard</h1>
     <p class="lead">Draw together on phones and computers. Boards are kept in this browser; jsflow carries the changes between the people on a board.</p>
@@ -161,7 +161,7 @@
     <label><input id="my-name" maxlength="24" autocomplete="nickname"></label>
   </div>
 
-  <div id="menu" class="panel pop" hidden>
+  <div id="menu" class="panel pop" hidden data-jf-chrome="menu">
     <button id="fit">Show everything</button>
     <button id="export-png">Download as PNG</button>
     <button id="export-file">Download board file</button>
@@ -185,7 +185,7 @@
     <button class="tool" id="delete" title="Delete the selection (Delete)" disabled><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
   </nav>
 
-  <div id="share" hidden role="dialog" aria-modal="true" aria-labelledby="share-title">
+  <div id="share" hidden data-jf-chrome="dialog" role="dialog" aria-modal="true" aria-labelledby="share-title">
     <div class="card panel">
       <h2 id="share-title">Join this board</h2>
       <p>Scan with a phone camera, or send the link.</p>

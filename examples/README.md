@@ -1,7 +1,7 @@
 # jsflow examples
 
-Small, complete pages that use the SDK, each in its own folder as one `index.html` with no build step. They load the
-SDK from the CDN at an exact version and use the shared demo key, which works on `http://localhost` and `http://127.0.0.1`
+Small, complete pages that use the SDK, each in its own folder. Most are one `index.html` with no build step (below); `whiteboard/` and
+`yjs-editor/` are projects you build with npm. The one-page examples load the SDK from the CDN at an exact version and use the shared demo key, which works on `http://localhost` and `http://127.0.0.1`
 only. For your own app, replace the key with the one from the dashboard.
 
 Serve this folder over HTTP (a `file://` page has no origin the service accepts) and open an example in two tabs:
@@ -17,7 +17,9 @@ cd examples && python3 -m http.server 8080
 | `presence/` | who is here and where, with a heartbeat that repairs lost broadcasts, and a snapshot for late joiners |
 | `shared-state/` | shared fields as last-writer-wins registers, with digests and a reliable fetch to converge |
 | `reliable-chat/` | `sendReliable` to each peer, history for late joiners, the `undelivered` event |
-| `buzzers/` | a big screen hosts a quiz and shows a QR code; phones join and press a buzzer; the screen decides who was first and keeps the score, and sends the scoreboard to a phone that joins late or reloads |
+| `buzzers/` | a big screen hosts the round and shows a QR code; phones join and press a buzzer; the screen decides who was first and keeps the score, and sends the scoreboard to a phone that joins late or reloads |
+| `whiteboard/` | a shared board for phones and computers: drawing, sticky notes, shapes and everyone's cursors, kept in each browser and merged when edits made offline return (Yjs through `y-jsflow`); a project, built with npm, with a live copy at https://jsflow.com/examples/whiteboard/ |
+| `yjs-editor/` | a shared text editor with everyone's cursors (CodeMirror 6; Yjs through `y-jsflow`); a project, built with npm |
 
 ### `buzzers/` on phones
 
@@ -31,6 +33,8 @@ address your phones will use to the app's origins, either:
 
 The screen shows a QR code and a link; scan it with a phone. The screen decides who pressed first and keeps the score, in its own page, and
 a reload of the screen keeps it (it is saved in the tab's session storage).
+
+`whiteboard/` and `yjs-editor/` each have their own README: `npm install`, put your publishable key in `APP` (the page says so until you do), then `npm run dev`.
 
 `tickets/` has join-ticket backends in Node, Python and Go (standard library only; see its README); they work with the 1.0 SDK's `ticket` option.
 

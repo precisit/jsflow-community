@@ -1,8 +1,18 @@
 {
   "name": "jsflow",
+  "version": "0.1.0",
   "description": "Build with jsflow and manage a jsflow account from a coding agent: apps, keys, usage, logs and live rooms through the jsflow CLI, with a person approving anything that spends money, deletes or creates access.",
-  "author": { "name": "Precisit AB", "email": "support@jsflow.com" },
+  "author": {
+    "name": "Precisit AB",
+    "email": "support@jsflow.com"
+  },
   "homepage": "https://jsflow.com/docs/agents/",
   "license": "MIT",
-  "keywords": ["jsflow", "webrtc", "realtime", "multiplayer", "agents"]
+  "keywords": [
+    "jsflow",
+    "webrtc",
+    "realtime",
+    "multiplayer",
+    "agents"
+  ]
 }

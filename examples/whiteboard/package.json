@@ -13,7 +13,7 @@
     "jsflow-sdk": "1.1.2",
     "perfect-freehand": "1.2.3",
     "y-indexeddb": "9.0.12",
-    "y-jsflow": "0.1.1",
+    "y-jsflow": "0.1.2",
     "y-protocols": "1.0.7",
     "yjs": "13.6.33"
   },
