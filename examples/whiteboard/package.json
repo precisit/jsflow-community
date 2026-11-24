@@ -10,7 +10,7 @@
     "test": "node --test"
   },
   "dependencies": {
-    "jsflow-sdk": "1.1.2",
+    "jsflow-sdk": "1.1.3",
     "perfect-freehand": "1.2.3",
     "y-indexeddb": "9.0.12",
     "y-jsflow": "0.1.2",

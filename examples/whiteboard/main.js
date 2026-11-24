@@ -690,3 +690,11 @@ globalThis.whiteboard = {
 
 setTool(ui.tool);
 route(true);
+
+// iOS can leave the page scrolled after lifting a focused field above the keyboard. The page itself never scrolls (#start scrolls
+// inside), so it goes back to 0,0 once no visible field has focus. Here, not inline in index.html: the hosted page's CSP blocks inline
+// scripts. After the last line, because docs/demos/whiteboard/video-notes.md quotes this file by line number.
+const typing = () => { const el = document.activeElement; return !!el?.matches('input, textarea') && el.getClientRects().length > 0; };
+const settlePage = () => { if (!typing() && (scrollX || scrollY)) scrollTo(0, 0); };
+addEventListener('focusout', () => setTimeout(settlePage));
+globalThis.visualViewport?.addEventListener('resize', settlePage);
